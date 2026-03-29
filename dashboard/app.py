@@ -117,7 +117,7 @@ def api_status():
 
 
 if __name__ == "__main__":
-    print("\nDashboard iniciado en: http://localhost:5000")
+    print("\nDashboard iniciado en: http://localhost:5001")
     print(f"Usuario: {settings.DASHBOARD_USER}")
-    print("Para acceso remoto: ngrok http 5000\n")
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    print("Para acceso remoto: ngrok http 5001\n")
+    app.run(debug=False, host="0.0.0.0", port=5001)
