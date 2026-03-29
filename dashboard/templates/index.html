@@ -104,9 +104,16 @@
       <div class="sub">USDC disponible en tu cuenta</div>
     </div>
     <div class="hero-card">
-      <div class="label">Capital inicial depositado</div>
-      <div class="value purple">${{ initial_capital }}</div>
-      <div class="sub">Configurable en <b>.env</b> → INITIAL_CAPITAL</div>
+      <div class="label">Capital inicial <span style="color:#4a5568;font-size:0.65rem;cursor:pointer;" onclick="editCapital()" title="Editar">[editar]</span></div>
+      <div class="value purple" id="hero-capital">${{ initial_capital }}</div>
+      <div id="hero-capital-edit" style="display:none;margin-top:8px;">
+        <input type="number" id="capital-input" step="0.01" min="0"
+          style="background:#12141f;border:1px solid #7c6fff;border-radius:6px;padding:6px 10px;color:#e2e8f0;font-size:1rem;width:130px;"
+          placeholder="0.00">
+        <button onclick="saveCapital()" style="margin-left:6px;background:#7c6fff;border:none;border-radius:6px;padding:6px 12px;color:#fff;cursor:pointer;font-size:0.85rem;">Guardar</button>
+        <button onclick="cancelCapital()" style="margin-left:4px;background:#2d3154;border:none;border-radius:6px;padding:6px 10px;color:#94a3b8;cursor:pointer;font-size:0.85rem;">✕</button>
+      </div>
+      <div class="sub">Base para calcular el P&amp;L</div>
     </div>
     <div class="hero-card">
       <div class="label">P&amp;L total</div>
@@ -254,6 +261,34 @@ function renderTradeHistory(trades) {
 
 async function loadAll() {
   await Promise.all([loadBalance(), loadPortfolio()]);
+}
+
+function editCapital() {
+  const current = document.getElementById('hero-capital').textContent.replace('$','');
+  document.getElementById('capital-input').value = current;
+  document.getElementById('hero-capital').style.display = 'none';
+  document.getElementById('hero-capital-edit').style.display = 'block';
+  document.getElementById('capital-input').focus();
+}
+
+function cancelCapital() {
+  document.getElementById('hero-capital').style.display = 'block';
+  document.getElementById('hero-capital-edit').style.display = 'none';
+}
+
+async function saveCapital() {
+  const val = parseFloat(document.getElementById('capital-input').value);
+  if (isNaN(val) || val < 0) return;
+  const res = await fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({initial_capital: val})
+  }).then(r => r.json());
+  if (res.ok) {
+    document.getElementById('hero-capital').textContent = '$' + val.toFixed(2);
+    cancelCapital();
+    loadBalance(); // recalcula P&L
+  }
 }
 
 // Auto-refresh

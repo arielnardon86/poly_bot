@@ -26,6 +26,23 @@ PORTFOLIO_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "portfolio.json"
 )
+CONFIG_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "dashboard_config.json"
+)
+
+
+def load_dashboard_config() -> dict:
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            return json.load(f)
+    return {"initial_capital": settings.INITIAL_CAPITAL}
+
+
+def save_dashboard_config(data: dict):
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(data, f)
 
 
 def load_portfolio() -> dict:
@@ -83,20 +100,38 @@ def logout():
 @app.route("/")
 @login_required
 def index():
+    cfg = load_dashboard_config()
     return render_template("index.html",
         dry_run=settings.DRY_RUN,
         wallet=settings.WALLET_ADDRESS or "No configurada",
         max_position=settings.MAX_POSITION_SIZE,
         min_roi=settings.MIN_ROI * 100,
-        initial_capital=settings.INITIAL_CAPITAL,
+        initial_capital=cfg["initial_capital"],
     )
+
+
+@app.route("/api/config", methods=["GET", "POST"])
+@login_required
+def api_config():
+    if request.method == "POST":
+        data = request.get_json()
+        cfg = load_dashboard_config()
+        if "initial_capital" in data:
+            try:
+                cfg["initial_capital"] = float(data["initial_capital"])
+                save_dashboard_config(cfg)
+                return jsonify({"ok": True, "initial_capital": cfg["initial_capital"]})
+            except (ValueError, TypeError):
+                return jsonify({"ok": False, "error": "Valor inválido"}), 400
+    cfg = load_dashboard_config()
+    return jsonify(cfg)
 
 
 @app.route("/api/balance")
 @login_required
 def api_balance():
     balance = get_live_balance()
-    initial = settings.INITIAL_CAPITAL
+    initial = load_dashboard_config()["initial_capital"]
     usdc = balance["usdc"]
 
     pnl = None
