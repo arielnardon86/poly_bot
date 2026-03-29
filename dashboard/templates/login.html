@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polymarket Bot — Login</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #1a1d2e;
+      border: 1px solid #2d3154;
+      border-radius: 16px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 380px;
+    }
+    .logo {
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.1rem;
+      color: #7c6fff;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 0.78rem;
+      color: #4a5568;
+      margin-bottom: 32px;
+    }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      background: #12141f;
+      border: 1px solid #2d3154;
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      margin-bottom: 18px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #7c6fff; }
+    button {
+      width: 100%;
+      background: #7c6fff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 13px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #6b5ce7; }
+    .error {
+      background: #2d1a1a;
+      border: 1px solid #e53e3e;
+      color: #fc8181;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">⬡</div>
+    <h1>Polymarket Bot</h1>
+    <p class="subtitle">Dashboard de rendimientos</p>
+
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST">
+      <label>Usuario</label>
+      <input type="text" name="username" autocomplete="username" autofocus placeholder="admin">
+      <label>Contraseña</label>
+      <input type="password" name="password" autocomplete="current-password" placeholder="••••••••">
+      <button type="submit">Ingresar</button>
+    </form>
+  </div>
+</body>
+</html>
