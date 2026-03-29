@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polymarket Bot — Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+    /* HEADER */
+    header { background: #1a1d2e; border-bottom: 1px solid #2d3154; padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 1.3rem; font-weight: 700; color: #7c6fff; letter-spacing: 0.5px; }
+    .mode-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; letter-spacing: 1px; }
+    .mode-dry  { background: #2d3748; color: #f6ad55; border: 1px solid #f6ad55; }
+    .mode-live { background: #1a2e1a; color: #68d391; border: 1px solid #68d391; }
+    .last-updated { font-size: 0.75rem; color: #64748b; }
+
+    /* LAYOUT */
+    main { padding: 28px 32px; max-width: 1300px; margin: 0 auto; }
+
+    /* CARDS ROW */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .card { background: #1a1d2e; border: 1px solid #2d3154; border-radius: 12px; padding: 20px; }
+    .card .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 8px; }
+    .card .value { font-size: 1.8rem; font-weight: 700; }
+    .card .sub   { font-size: 0.78rem; color: #64748b; margin-top: 4px; }
+    .green { color: #68d391; }
+    .yellow { color: #f6ad55; }
+    .blue  { color: #63b3ed; }
+    .purple { color: #b794f4; }
+
+    /* TABLES */
+    .section { background: #1a1d2e; border: 1px solid #2d3154; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    .section h2 { font-size: 0.9rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-green  { background: #68d391; box-shadow: 0 0 6px #68d391; animation: pulse 2s infinite; }
+    .dot-yellow { background: #f6ad55; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; padding: 8px 12px; color: #64748b; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #2d3154; }
+    td { padding: 12px 12px; border-bottom: 1px solid #1e2235; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #1e2235; }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; }
+    .badge-open   { background: #1a2e1a; color: #68d391; border: 1px solid #68d391; }
+    .badge-closed { background: #2d3748; color: #94a3b8; border: 1px solid #4a5568; }
+    .badge-dry    { background: #2d2a1e; color: #f6ad55; border: 1px solid #f6ad55; }
+
+    .empty-state { text-align: center; padding: 40px; color: #4a5568; }
+    .empty-state .icon { font-size: 2rem; margin-bottom: 8px; }
+
+    /* CONFIG STRIP */
+    .config-strip { background: #12141f; border: 1px solid #2d3154; border-radius: 8px; padding: 12px 20px; display: flex; gap: 28px; flex-wrap: wrap; margin-bottom: 28px; font-size: 0.8rem; color: #64748b; }
+    .config-strip span b { color: #94a3b8; }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* REFRESH */
+    .refresh-bar { position: fixed; bottom: 20px; right: 24px; background: #1a1d2e; border: 1px solid #2d3154; border-radius: 20px; padding: 8px 16px; font-size: 0.75rem; color: #64748b; }
+    .refresh-bar b { color: #7c6fff; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⬡ Polymarket Arbitrage Bot</h1>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <span class="last-updated" id="last-updated">Cargando...</span>
+    <span class="mode-badge {{ 'mode-dry' if dry_run else 'mode-live' }}">
+      {{ 'DRY RUN' if dry_run else 'PRODUCCIÓN' }}
+    </span>
+  </div>
+</header>
+
+<main>
+  <!-- Configuración -->
+  <div class="config-strip">
+    <span>Wallet: <b>{{ wallet[:6] + '...' + wallet[-4:] if wallet and wallet != 'No configurada' else wallet }}</b></span>
+    <span>Capital máx/op: <b>${{ max_position }}</b></span>
+    <span>ROI mínimo: <b>{{ min_roi|int }}%</b></span>
+    <span>Auto-refresh: <b>30s</b></span>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="cards" id="cards">
+    <div class="card"><div class="label">Operaciones totales</div><div class="value blue" id="kpi-trades">—</div></div>
+    <div class="card"><div class="label">Capital invertido</div><div class="value purple" id="kpi-invested">—</div><div class="sub" id="kpi-invested-open"></div></div>
+    <div class="card"><div class="label">Ganancia realizada</div><div class="value green" id="kpi-profit">—</div></div>
+    <div class="card"><div class="label">Ganancia pendiente</div><div class="value yellow" id="kpi-pending">—</div><div class="sub">al resolver mercados</div></div>
+    <div class="card"><div class="label">Posiciones abiertas</div><div class="value blue" id="kpi-open">—</div></div>
+  </div>
+
+  <!-- Posiciones Abiertas -->
+  <div class="section">
+    <h2><span class="dot dot-green"></span>Posiciones Abiertas</h2>
+    <div id="open-positions-container">
+      <div class="empty-state"><div class="icon">📊</div><div>Cargando...</div></div>
+    </div>
+  </div>
+
+  <!-- Historial de Trades -->
+  <div class="section">
+    <h2><span class="dot dot-yellow"></span>Historial de Operaciones</h2>
+    <div id="trade-history-container">
+      <div class="empty-state"><div class="icon">📋</div><div>Cargando...</div></div>
+    </div>
+  </div>
+</main>
+
+<div class="refresh-bar">Refrescando en <b id="countdown">30</b>s</div>
+
+<script>
+async function loadData() {
+  try {
+    const [portfolio, status] = await Promise.all([
+      fetch('/api/portfolio').then(r => r.json()),
+      fetch('/api/status').then(r => r.json()),
+    ]);
+
+    // KPIs
+    const s = portfolio.stats;
+    document.getElementById('kpi-trades').textContent = s.total_trades;
+    document.getElementById('kpi-invested').textContent = '$' + s.total_invested.toFixed(2);
+    document.getElementById('kpi-invested-open').textContent = '$' + s.invested_in_open.toFixed(2) + ' en posiciones abiertas';
+    document.getElementById('kpi-profit').textContent = '$' + s.total_profit_realized.toFixed(2);
+    document.getElementById('kpi-pending').textContent = '$' + s.total_profit_pending.toFixed(2);
+    document.getElementById('kpi-open').textContent = s.open_positions;
+
+    // Last updated
+    const now = new Date();
+    document.getElementById('last-updated').textContent = 'Actualizado: ' + now.toLocaleTimeString();
+
+    // Open positions table
+    renderOpenPositions(portfolio.open_positions);
+
+    // Trade history
+    renderTradeHistory(portfolio.recent_trades);
+
+  } catch(e) {
+    console.error('Error cargando datos:', e);
+  }
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+}
+
+function renderOpenPositions(positions) {
+  const container = document.getElementById('open-positions-container');
+  if (!positions || positions.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div>Sin posiciones abiertas. El bot está escaneando...</div></div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Mercado</th><th>Acciones</th><th>YES ask</th><th>NO ask</th><th>Costo</th><th>Ganancia esperada</th><th>ROI</th><th>Fecha</th><th>Tipo</th></tr></thead><tbody>';
+  for (const p of positions) {
+    const roi = (p.roi * 100).toFixed(2);
+    const dry = p.dry_run ? '<span class="badge badge-dry">DRY</span>' : '<span class="badge badge-open">LIVE</span>';
+    html += `<tr>
+      <td title="${p.question}">${p.question.length > 45 ? p.question.substring(0,45)+'…' : p.question}</td>
+      <td>${p.shares}</td>
+      <td>$${p.yes_ask.toFixed(3)}</td>
+      <td>$${p.no_ask.toFixed(3)}</td>
+      <td class="purple">$${p.cost_total.toFixed(2)}</td>
+      <td class="green">$${p.expected_profit.toFixed(2)}</td>
+      <td class="yellow">${roi}%</td>
+      <td>${fmtDate(p.timestamp)}</td>
+      <td>${dry}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function renderTradeHistory(trades) {
+  const container = document.getElementById('trade-history-container');
+  if (!trades || trades.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>Sin operaciones registradas aún.</div></div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>ID</th><th>Mercado</th><th>Acciones</th><th>Costo</th><th>Ganancia</th><th>ROI</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>';
+  for (const p of trades) {
+    const roi = (p.roi * 100).toFixed(2);
+    const statusBadge = p.status === 'open'
+      ? '<span class="badge badge-open">Abierta</span>'
+      : '<span class="badge badge-closed">Cerrada</span>';
+    const dry = p.dry_run ? ' <span class="badge badge-dry">DRY</span>' : '';
+    html += `<tr>
+      <td style="font-size:0.7rem;color:#4a5568;">${p.id}</td>
+      <td title="${p.question}">${p.question.length > 40 ? p.question.substring(0,40)+'…' : p.question}</td>
+      <td>${p.shares}</td>
+      <td class="purple">$${p.cost_total.toFixed(2)}</td>
+      <td class="green">$${p.expected_profit.toFixed(2)}</td>
+      <td class="yellow">${roi}%</td>
+      <td>${statusBadge}${dry}</td>
+      <td>${fmtDate(p.timestamp)}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// Auto-refresh
+let countdown = 30;
+setInterval(() => {
+  countdown--;
+  document.getElementById('countdown').textContent = countdown;
+  if (countdown <= 0) {
+    countdown = 30;
+    loadData();
+  }
+}, 1000);
+
+loadData();
+</script>
+</body>
+</html>
