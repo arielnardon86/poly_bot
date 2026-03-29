@@ -21,7 +21,8 @@ GAMMA_URL = "https://gamma-api.polymarket.com"
 DATA_URL = "https://data-api.polymarket.com"
 
 # --- Parámetros del bot ---
-MAX_POSITION_SIZE = float(os.getenv("MAX_POSITION_SIZE", 50))   # USDC máx por operación
+MAX_POSITION_SIZE = float(os.getenv("MAX_POSITION_SIZE", 50))
+INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", 0))   # USDC máx por operación
 MIN_ROI = float(os.getenv("MIN_ROI", 0.03))                      # 3% ROI mínimo
 DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
 

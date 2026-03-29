@@ -3,11 +3,10 @@ Dashboard web del bot de arbitraje — con login protegido.
 
 Uso:
     python dashboard/app.py
-    Luego abre: http://localhost:5000
+    Luego abre: http://localhost:5001
 
-Acceso remoto desde celular (requiere ngrok instalado):
-    ngrok http 5000
-    Usa la URL https://xxxx.ngrok-free.app desde cualquier dispositivo
+Acceso remoto desde celular:
+    ngrok http 5001
 """
 import sys
 import os
@@ -34,6 +33,23 @@ def load_portfolio() -> dict:
         with open(PORTFOLIO_FILE, "r") as f:
             return json.load(f)
     return {"positions": [], "closed": [], "stats": {"total_invested": 0, "total_profit": 0, "trades": 0}}
+
+
+def get_live_balance() -> dict:
+    """Consulta el saldo real de USDC en Polymarket."""
+    try:
+        from src.client import build_client
+        from py_clob_client.clob_types import AssetType, BalanceAllowanceParams
+        client = build_client(authenticated=True)
+        raw = client.get_balance_allowance(
+            params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+        )
+        # USDC tiene 6 decimales en Polygon
+        raw_balance = int(raw.get("balance", 0))
+        usdc = raw_balance / 1_000_000 if raw_balance > 1000 else raw_balance
+        return {"usdc": round(usdc, 2), "error": None}
+    except Exception as e:
+        return {"usdc": None, "error": str(e)}
 
 
 def login_required(f):
@@ -72,7 +88,35 @@ def index():
         wallet=settings.WALLET_ADDRESS or "No configurada",
         max_position=settings.MAX_POSITION_SIZE,
         min_roi=settings.MIN_ROI * 100,
+        initial_capital=settings.INITIAL_CAPITAL,
     )
+
+
+@app.route("/api/balance")
+@login_required
+def api_balance():
+    balance = get_live_balance()
+    initial = settings.INITIAL_CAPITAL
+    usdc = balance["usdc"]
+
+    pnl = None
+    pnl_pct = None
+    if usdc is not None and initial > 0:
+        # Saldo actual + ganancias pendientes (acciones abiertas)
+        data = load_portfolio()
+        positions = data.get("positions", [])
+        pending = sum(p.get("expected_profit", 0) for p in positions if p.get("status") == "open")
+        total_value = usdc + pending
+        pnl = round(total_value - initial, 2)
+        pnl_pct = round((pnl / initial) * 100, 2) if initial > 0 else 0
+
+    return jsonify({
+        "usdc_balance": usdc,
+        "initial_capital": initial,
+        "pnl": pnl,
+        "pnl_pct": pnl_pct,
+        "error": balance["error"],
+    })
 
 
 @app.route("/api/portfolio")
