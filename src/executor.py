@@ -1,144 +1,110 @@
 """
-Ejecutor de trades de arbitraje.
+Ejecutor de trades AMM para arbitraje negRisk.
 
-Para cada oportunidad detectada:
-1. Compra YES al precio ask
-2. Compra NO al precio ask
-3. Si alguna pierna falla, cancela la otra (gestión de riesgo)
+Para cada oportunidad: compra YES de TODOS los outcomes del evento.
+Exactamente uno va a valer $1.00 al resolverse — los demás $0.00.
+La ganancia = $1.00 - costo_total.
 """
 import time
 import math
 from typing import Optional
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs, OrderType
+from py_clob_client.clob_types import MarketOrderArgs, OrderType
 from py_clob_client.order_builder.constants import BUY
 
-from src.arbitrage import ArbOpportunity
+from src.arbitrage import NegRiskOpportunity
 from config import settings
 
 
-def _round_to_tick(price: float, tick: float = 0.01) -> float:
-    """Redondea un precio al tick size más cercano."""
-    return round(round(price / tick) * tick, 6)
-
-
-def _get_tick_size(client: ClobClient, token_id: str) -> float:
-    """Obtiene el tick size de un token."""
-    try:
-        resp = client.get_tick_size(token_id)
-        return float(resp) if resp else 0.01
-    except Exception:
-        return 0.01
-
-
-def execute_arbitrage(
+def execute_negrisk_arb(
     client: ClobClient,
-    opportunity: ArbOpportunity,
+    opportunity: NegRiskOpportunity,
     shares: Optional[float] = None,
 ) -> dict:
     """
-    Ejecuta el arbitraje: compra YES y NO simultáneamente.
+    Ejecuta el arbitraje negRisk: compra YES de todos los outcomes.
 
     Args:
-        client:      Cliente autenticado de Polymarket.
+        client:      Cliente autenticado.
         opportunity: Oportunidad detectada por el scanner.
-        shares:      Cantidad de acciones a comprar. Si es None, usa el máximo seguro.
+        shares:      Acciones por outcome. None = usa el máximo seguro.
 
     Returns:
-        dict con resultado: {success, yes_order, no_order, cost, expected_profit, error}
+        dict con resultado de la operación.
     """
     if shares is None:
-        shares = math.floor(opportunity.max_shares)  # Solo números enteros
+        shares = math.floor(opportunity.max_shares)
 
     if shares < 1:
-        return {"success": False, "error": "Cantidad de acciones insuficiente (< 1)"}
+        return {"success": False, "error": "shares < 1"}
 
-    cost_total = shares * opportunity.combined_cost
-    expected_profit = shares * opportunity.profit_per_share
+    cost_total = shares * opportunity.total_cost
+    expected_profit = shares * opportunity.profit_per_dollar
 
-    print(f"\n  Ejecutando arbitraje:")
-    print(f"  Acciones: {shares} | Costo: ${cost_total:.2f} | Ganancia esperada: ${expected_profit:.2f}")
+    print(f"\n  Ejecutando arbitraje negRisk:")
+    print(f"  Evento: {opportunity.event_title[:55]}")
+    print(f"  {len(opportunity.outcomes)} outcomes × {shares} acciones")
+    print(f"  Costo total: ${cost_total:.2f} | Ganancia esperada: ${expected_profit:.2f}")
 
     # --- DRY RUN ---
     if settings.DRY_RUN:
-        print(f"  [DRY RUN] Comprando {shares} YES @ ${opportunity.yes_ask:.3f}")
-        print(f"  [DRY RUN] Comprando {shares} NO  @ ${opportunity.no_ask:.3f}")
+        for o in opportunity.outcomes:
+            print(f"  [DRY RUN] BUY {shares} YES @ ${o['yes_price']:.3f}  {o['question'][:45]}")
         return {
             "success": True,
             "dry_run": True,
             "shares": shares,
             "cost_total": cost_total,
             "expected_profit": expected_profit,
-            "yes_order": {"simulated": True, "price": opportunity.yes_ask, "size": shares},
-            "no_order": {"simulated": True, "price": opportunity.no_ask, "size": shares},
+            "orders_placed": len(opportunity.outcomes),
         }
 
     # --- PRODUCCIÓN ---
-    yes_tick = _get_tick_size(client, opportunity.yes_token_id)
-    no_tick = _get_tick_size(client, opportunity.no_token_id)
+    placed = []
+    failed = []
 
-    yes_price = _round_to_tick(opportunity.yes_ask, yes_tick)
-    no_price = _round_to_tick(opportunity.no_ask, no_tick)
+    for i, outcome in enumerate(opportunity.outcomes):
+        token_id = outcome["token_id"]
+        amount = shares * outcome["yes_price"]  # USDC a gastar en este outcome
 
-    yes_order_id = None
-    no_order_id = None
+        if amount < 1.0:
+            amount = 1.0  # Mínimo de Polymarket
 
-    try:
-        # Pierna 1: comprar YES
-        print(f"  Comprando {shares} YES @ ${yes_price:.3f}...")
-        yes_args = OrderArgs(
-            token_id=opportunity.yes_token_id,
-            price=yes_price,
-            size=float(shares),
-            side=BUY,
-        )
-        yes_signed = client.create_order(yes_args)
-        yes_resp = client.post_order(yes_signed, OrderType.GTC)
-        yes_order_id = yes_resp.get("orderID") or yes_resp.get("id")
-        print(f"  ✓ YES order: {yes_order_id}")
+        print(f"  [{i+1}/{len(opportunity.outcomes)}] Comprando ${amount:.2f} en '{outcome['question'][:40]}'...")
 
-        # Pequeña pausa para no saturar el API
+        try:
+            mo = MarketOrderArgs(
+                token_id=token_id,
+                amount=round(amount, 2),
+                side=BUY,
+            )
+            signed = client.create_market_order(mo)
+            resp = client.post_order(signed, OrderType.FOK)
+
+            order_id = resp.get("orderID") or resp.get("id") or "ok"
+            placed.append({"outcome": outcome["question"][:40], "order_id": order_id, "amount": amount})
+            print(f"    ✓ {order_id}")
+
+        except Exception as e:
+            failed.append({"outcome": outcome["question"][:40], "error": str(e)})
+            print(f"    ✗ Error: {e}")
+
         time.sleep(0.3)
 
-        # Pierna 2: comprar NO
-        print(f"  Comprando {shares} NO  @ ${no_price:.3f}...")
-        no_args = OrderArgs(
-            token_id=opportunity.no_token_id,
-            price=no_price,
-            size=float(shares),
-            side=BUY,
-        )
-        no_signed = client.create_order(no_args)
-        no_resp = client.post_order(no_signed, OrderType.GTC)
-        no_order_id = no_resp.get("orderID") or no_resp.get("id")
-        print(f"  ✓ NO order:  {no_order_id}")
+    success = len(placed) == len(opportunity.outcomes)
 
-        return {
-            "success": True,
-            "shares": shares,
-            "cost_total": cost_total,
-            "expected_profit": expected_profit,
-            "yes_order": yes_resp,
-            "no_order": no_resp,
-        }
+    if not success and placed:
+        print(f"\n  [ALERTA] Solo se ejecutaron {len(placed)}/{len(opportunity.outcomes)} outcomes.")
+        print(f"  Posición parcial — revisá manualmente en Polymarket.")
 
-    except Exception as e:
-        error_msg = str(e)
-        print(f"  [ERROR] Fallo en ejecución: {error_msg}")
-
-        # Gestión de riesgo: si YES se compró pero NO falló, cancela YES
-        if yes_order_id and not no_order_id:
-            print(f"  Cancelando orden YES {yes_order_id} para evitar exposición...")
-            try:
-                client.cancel(yes_order_id)
-                print(f"  ✓ Orden YES cancelada")
-            except Exception as cancel_err:
-                print(f"  [ALERTA] No se pudo cancelar YES: {cancel_err}")
-
-        return {
-            "success": False,
-            "error": error_msg,
-            "yes_order_id": yes_order_id,
-        }
-
-
+    return {
+        "success": success,
+        "partial": len(placed) > 0 and not success,
+        "shares": shares,
+        "cost_total": cost_total,
+        "expected_profit": expected_profit,
+        "orders_placed": len(placed),
+        "orders_failed": len(failed),
+        "placed": placed,
+        "failed": failed,
+    }

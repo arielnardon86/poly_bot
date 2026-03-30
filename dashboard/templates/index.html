@@ -158,8 +158,8 @@ async function loadBalance() {
 
     // Saldo USDC
     const balEl = document.getElementById('hero-balance');
-    if (b.usdc !== null && b.usdc !== undefined) {
-      balEl.textContent = '$' + b.usdc.toFixed(2);
+    if (b.usdc_balance !== null && b.usdc_balance !== undefined) {
+      balEl.textContent = '$' + b.usdc_balance.toFixed(2);
       balEl.className = 'value white';
     } else {
       balEl.textContent = 'Sin datos';

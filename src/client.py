@@ -29,7 +29,7 @@ def build_client(authenticated: bool = False) -> ClobClient:
         settings.CLOB_URL,
         key=settings.PRIVATE_KEY,
         chain_id=settings.CHAIN_ID,
-        signature_type=0,       # EOA (MetaMask estándar)
+        signature_type=2,       # Browser proxy (MetaMask via Polymarket web)
         funder=settings.WALLET_ADDRESS,
     )
 
